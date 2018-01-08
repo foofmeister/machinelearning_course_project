@@ -1,0 +1,174 @@
+---
+title: "Machine Learning Course Project"
+author: "Forest Summers"
+date: "December 27, 2017"
+output: html_document
+---
+
+Using devices like JawBone Up, Nike FuelBand etc, it is possible to collect a large amount of data about personal activity.  
+
+Participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+I will do Cross Validation by setting up a test and training data set, and using the test data to validate my training data.
+
+```{r setup, include=FALSE}
+
+#Bring in Data Sets
+  urltraining <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+  training <- read.csv(urltraining)
+  urltest <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+  testing <- read.csv(urltest)
+
+#Use Packages
+  library(caret);
+  library(randomForestSRC);
+  library(randomForest);
+  library(rpart);
+  library(rattle);
+  
+#working Directory
+  setwd("C:/Users/Summers.forest/Documents/R Code")
+  set.seed(500)
+```
+
+First, I need to build a training and test data set when running my analysis.
+
+```{r Analysis}
+
+inTrain = createDataPartition(training$classe, p = 3/4)[[1]]
+
+training_set <- training[inTrain,]
+testing_set <- training[-inTrain,]
+
+training_set$classe <- as.character(training_set$classe)
+testing_set$classe <- as.character(testing_set$classe)
+
+
+
+#simple_model <- train(classe ~ ., data = training)
+
+
+```
+
+When looking at this data, I can see that there are many NA's amongst the data.  I will try to find the importance and significance of this.
+
+```{r findna}
+NA_val <- data.frame(co_name = character(), num_NA = numeric())
+
+for (i in 1:ncol(training_set)) {
+  
+  co_name <- names(training_set)[i]   
+  sum_NA <- sum(is.na(training_set[,i]))
+  add_na_val <- data.frame(co_name, sum_NA)
+  NA_val <- rbind(NA_val, add_na_val) 
+}
+
+
+```
+
+It becomes clear that the NA's are not of importance, so I will remove them from both training and testing data sets.  Next I will also remove columns that do not make sense to include, such as factors.
+
+```{r removena}
+training_set <- training_set[,(NA_val$sum_NA == 0)]
+testing_set <- testing_set[,(NA_val$sum_NA==0)]
+
+FA_val <- data.frame(co_name = character(), fac_ind = character())
+
+for (n in 1:ncol(training_set)) {
+  co_name <- names(training_set)[n]
+  a <- class(training_set[,n])
+  add_val <- data.frame(co_name,a)
+  FA_val <- rbind(FA_val,add_val)
+}
+
+#classe_train <- training_set$classe
+#classe_test <- testing_set$classe
+
+training_set <- training_set[,(FA_val$a != "factor")]
+testing_set <- testing_set[,(FA_val$a != "factor")]
+training_set$X <- NULL
+testing_set$X <- NULL
+training_set$classe <- as.factor(training_set$classe)
+testing_set$classe <- as.factor(testing_set$classe)
+
+
+```
+
+I then will start to build models.  I am going to try to build a model using random forest and decision tree.  First though, because these models take so long to run, I will parse the data further.  This step is optional.
+
+```{r parse}
+
+#intrain2 <- createDataPartition(training_set$classe, p = 1/10)[[1]]
+#training_set <- training_set[intrain2,]
+
+```
+
+```{r buildmoel}
+#svm_model <- train(classe ~ ., data = training_set, model = "svm")
+
+rforest_model <- randomForest(classe ~ ., data = training_set)
+decision_tree_model <- rpart(classe ~ ., data = training_set, method = "class")
+  #decision_tree_model_test <- train(classe ~., data = training_set, method = "rpart")
+
+
+```
+
+Now that we have our predictions, let's run these machine learnings on the test set and see which ones are most accurate.  Then we can get the expected out-of sample error.
+
+```{r testmodel}
+
+predict_rf <- predict(rforest_model, testing_set)
+accuracy_rf <- confusionMatrix(predict_rf, testing_set$classe)[[3]][1]
+
+  #predict_dt <- predict(decision_tree_model_test, testing_set)
+predict_dt <- predict(decision_tree_model, testing_set)
+predict_dt_check <- predict(decision_tree_model, testing_set, type = "class")
+
+accuracy_dt <- confusionMatrix(predict_dt_check, testing_set$classe)[[3]][1]
+  #accuracy_dt_reg <- confusionMatrix(predict_dt, testing_set$classe)[[3]][1]
+
+1 - accuracy_rf 
+1 - accuracy_dt
+
+```
+
+From the above accuracy, I can see that the random Forest is more accurate.  Out of sample error is 0.001427406, compared with 0.1217374.  I still want to look at the decision tree, however.
+
+```{r decisiontreeplot}
+
+fancyRpartPlot(decision_tree_model)
+
+```
+I need to do the analysis on the test data and output a csv
+
+```{r test}
+testing_final <- testing[, which(names(testing) %in% names(training_set))]
+
+classe_decision_tree <- predict(decision_tree_model, testing_final)
+
+classe_random_forest <- predict(rforest_model, testing_final)
+
+#b <- classe_decision_tree
+
+for (i in 1:nrow(classe_decision_tree)){
+   
+  a <- names(which.max(classe_decision_tree[i,1:5]))
+  
+  if (exists("b")) {
+    b <- c(b,a)
+  } else {
+    b <- a
+  }
+ 
+}
+
+testing_final$classe_decision_tree <- b
+
+testing_final$classe_random_Forest <- classe_random_forest
+
+write.csv(testing_final, file = "Machine_Learning_Project_Output.csv")
+
+```
+
